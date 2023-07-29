@@ -1,0 +1,25 @@
+1. Подключаем удаленный git репозиторий
+2. Создаем Vagrantfile следующего содержания:
+MACHINES = { #Объявляем переменную
+  :"kernel-update" => { #Описываем конфигурацию машины
+              :box => "generic/centos7", #Указываем базовый образ ОС
+              :box_version => "4.2.16", #Указываем версию базового образа
+              :cpus => 2, #Ядра
+              :memory => 1024, #ОЗУ
+            }
+}
+
+#Создаем машину
+Vagrant.configure("2") do |config| #Указываем, что используем 2-ую версию конфигурации объекта конфигурации |config|
+    MACHINES.each do |boxname, boxconfig| #Указываем параметры ВМ путем итерации по перменной MACHINES 
+        config.vm.synced_folder ".", "/vagrant", disabled: true #Отключаем общую папку
+        config.vm.define boxname do |box| #Применяем конфигурацию ВМ
+            box.vm.box = boxconfig[:box]
+            box.vm.box_version = boxconfig[:box_version]
+            box.vm.provider "virtualbox" do |v| #Указываем вм провайдера (Какой гипервизор будем использовать)
+                v.memory = boxconfig[:memory]
+                v.cpus = boxconfig[:cpus]
+            end
+        end
+    end
+end
