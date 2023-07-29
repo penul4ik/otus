@@ -1,3 +1,11 @@
+MACHINES = {
+  :"kernel-update" => {
+              :box_name => "generic/centos7",
+              :box_version => "4.2.16",
+              :cpus => 2,
+              :memory => 1024,
+            }
+}
 
 Vagrant.configure("2") do |config|
     MACHINES.each do |boxname, boxconfig|
