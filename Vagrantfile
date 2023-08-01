@@ -2,8 +2,8 @@ MACHINES = {
   :"kernel-update" => {
               :box => "generic/centos7",
               :box_version => "4.2.16",
-              :cpus => 2,
-              :memory => 1024,
+              :cpus => 6,
+              :memory => 2048,
             }
 }
 
