@@ -1,0 +1,423 @@
+-------------------------------------------
+1.ОПРЕДЕЛЕНИЕ АЛГОРИТМА С НАИЛУЧШИМ СЖАТИЕМ
+-------------------------------------------
+
+[vagrant@zfs ~]$ lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda      8:0    0   40G  0 disk 
+`-sda1   8:1    0   40G  0 part /
+sdb      8:16   0  512M  0 disk 
+sdc      8:32   0  512M  0 disk 
+sdd      8:48   0  512M  0 disk 
+sde      8:64   0  512M  0 disk 
+sdf      8:80   0  512M  0 disk 
+sdg      8:96   0  512M  0 disk 
+sdh      8:112  0  512M  0 disk 
+sdi      8:128  0  512M  0 disk 
+[vagrant@zfs ~]$ sudo -s
+[root@zfs vagrant]# zpool create otus1 mirror /dev/sdb /dev/sdc 
+The ZFS modules are not loaded.
+Try running '/sbin/modprobe zfs' as root to load them.
+[root@zfs vagrant]# modprobe zfs
+[root@zfs vagrant]# zpool create otus1 mirror /dev/sdb /dev/sdc 
+[root@zfs vagrant]# zpool create otus1 mirror /dev/sdd /dev/sde 
+cannot create 'otus1': pool already exists
+[root@zfs vagrant]# zpool create otus2 mirror /dev/sdd /dev/sde 
+[root@zfs vagrant]# zpool create otus3 mirror /dev/sdf /dev/sdg 
+[root@zfs vagrant]# zpool create otus4 mirror /dev/sdh /dev/sdi 
+[root@zfs vagrant]# zpool list
+NAME    SIZE  ALLOC   FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT
+otus1   480M   106K   480M        -         -     0%     0%  1.00x    ONLINE  -
+otus2   480M  91.5K   480M        -         -     0%     0%  1.00x    ONLINE  -
+otus3   480M  91.5K   480M        -         -     0%     0%  1.00x    ONLINE  -
+otus4   480M  91.5K   480M        -         -     0%     0%  1.00x    ONLINE  -
+[root@zfs vagrant]# zpool status
+  pool: otus1
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus1       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdb     ONLINE       0     0     0
+	    sdc     ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus2
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus2       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdd     ONLINE       0     0     0
+	    sde     ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus3
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus3       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdf     ONLINE       0     0     0
+	    sdg     ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus4
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus4       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdh     ONLINE       0     0     0
+	    sdi     ONLINE       0     0     0
+
+errors: No known data errors
+[root@zfs vagrant]# zfs set compression=lzjb otus1
+[root@zfs vagrant]# zfs set compression=lz4 otus2
+[root@zfs vagrant]# zfs set compression=gzip-9 otus3
+[root@zfs vagrant]# zfs set compression=zle otus4
+[root@zfs vagrant]# zfs get all | grep compression
+otus1  compression           lzjb                   local
+otus2  compression           lz4                    local
+otus3  compression           gzip-9                 local
+otus4  compression           zle                    local
+[root@zfs vagrant]# for i in {1..4}; do wget -P /otus$i https://gutenberg.org/cache/epub/2600/pg2600.converter.log; done^C
+[root@zfs vagrant]# ва -р
+bash: ва: command not found
+[root@zfs vagrant]# df -h
+Filesystem      Size  Used Avail Use% Mounted on
+devtmpfs        489M     0  489M   0% /dev
+tmpfs           496M     0  496M   0% /dev/shm
+tmpfs           496M  6.8M  489M   2% /run
+tmpfs           496M     0  496M   0% /sys/fs/cgroup
+/dev/sda1        40G  7.2G   33G  18% /
+tmpfs           100M     0  100M   0% /run/user/1000
+otus1           352M  128K  352M   1% /otus1
+otus2           352M  128K  352M   1% /otus2
+otus3           352M  128K  352M   1% /otus3
+otus4           352M  128K  352M   1% /otus4
+[root@zfs vagrant]# lsblk
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda      8:0    0   40G  0 disk 
+`-sda1   8:1    0   40G  0 part /
+sdb      8:16   0  512M  0 disk 
+|-sdb1   8:17   0  502M  0 part 
+`-sdb9   8:25   0    8M  0 part 
+sdc      8:32   0  512M  0 disk 
+|-sdc1   8:33   0  502M  0 part 
+`-sdc9   8:41   0    8M  0 part 
+sdd      8:48   0  512M  0 disk 
+|-sdd1   8:49   0  502M  0 part 
+`-sdd9   8:57   0    8M  0 part 
+sde      8:64   0  512M  0 disk 
+|-sde1   8:65   0  502M  0 part 
+`-sde9   8:73   0    8M  0 part 
+sdf      8:80   0  512M  0 disk 
+|-sdf1   8:81   0  502M  0 part 
+`-sdf9   8:89   0    8M  0 part 
+sdg      8:96   0  512M  0 disk 
+|-sdg1   8:97   0  502M  0 part 
+`-sdg9   8:105  0    8M  0 part 
+sdh      8:112  0  512M  0 disk 
+|-sdh1   8:113  0  502M  0 part 
+`-sdh9   8:121  0    8M  0 part 
+sdi      8:128  0  512M  0 disk 
+|-sdi1   8:129  0  502M  0 part 
+`-sdi9   8:137  0    8M  0 part 
+[root@zfs vagrant]# for i in {1..4}; do wget -P /otus$i https://gutenberg.org/cache/epub/2600/pg2600.converter.log; done
+--2023-08-27 21:00:20--  https://gutenberg.org/cache/epub/2600/pg2600.converter.log
+Resolving gutenberg.org (gutenberg.org)... 152.19.134.47, 2610:28:3090:3000:0:bad:cafe:47
+Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 40960747 (39M) [text/plain]
+Saving to: '/otus1/pg2600.converter.log'
+
+100%[===================================================>] 40,960,747   998KB/s   in 47s    
+
+2023-08-27 21:01:08 (856 KB/s) - '/otus1/pg2600.converter.log' saved [40960747/40960747]
+
+--2023-08-27 21:01:08--  https://gutenberg.org/cache/epub/2600/pg2600.converter.log
+Resolving gutenberg.org (gutenberg.org)... 152.19.134.47, 2610:28:3090:3000:0:bad:cafe:47
+Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 40960747 (39M) [text/plain]
+Saving to: '/otus2/pg2600.converter.log'
+
+100%[===================================================>] 40,960,747  1.53MB/s   in 29s    
+
+2023-08-27 21:01:41 (1.34 MB/s) - '/otus2/pg2600.converter.log' saved [40960747/40960747]
+
+--2023-08-27 21:01:41--  https://gutenberg.org/cache/epub/2600/pg2600.converter.log
+Resolving gutenberg.org (gutenberg.org)... 152.19.134.47, 2610:28:3090:3000:0:bad:cafe:47
+Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 40960747 (39M) [text/plain]
+Saving to: '/otus3/pg2600.converter.log'
+
+18% [========>                                           ] 7,521,903   4.34KB/s  eta 11m 55s^C
+[root@zfs vagrant]# for i in {3..4}; do wget -P /otus$i https://gutenberg.org/cache/epub/2600/pg2600.converter.log; done
+--2023-08-27 21:13:06--  https://gutenberg.org/cache/epub/2600/pg2600.converter.log
+Resolving gutenberg.org (gutenberg.org)... 152.19.134.47, 2610:28:3090:3000:0:bad:cafe:47
+Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 40960747 (39M) [text/plain]
+Saving to: '/otus3/pg2600.converter.log.1'
+
+ 7% [===>                                                ] 3,196,549    266KB/s  eta 2m 26s ^C
+[root@zfs vagrant]# ls /otus3
+pg2600.converter.log  pg2600.converter.log.1
+[root@zfs vagrant]# rm -rf /otus3/pg2600.converter.log /otus3/pg2600.converter.log.1 
+[root@zfs vagrant]# for i in {3..4}; do wget -P /otus$i https://gutenberg.org/cache/epub/2600/pg2600.converter.log; done
+--2023-08-27 21:14:06--  https://gutenberg.org/cache/epub/2600/pg2600.converter.log
+Resolving gutenberg.org (gutenberg.org)... 152.19.134.47, 2610:28:3090:3000:0:bad:cafe:47
+Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 40960747 (39M) [text/plain]
+Saving to: '/otus3/pg2600.converter.log'
+
+100%[===================================================>] 40,960,747  1.23MB/s   in 43s    
+
+2023-08-27 21:15:00 (935 KB/s) - '/otus3/pg2600.converter.log' saved [40960747/40960747]
+
+--2023-08-27 21:15:00--  https://gutenberg.org/cache/epub/2600/pg2600.converter.log
+Resolving gutenberg.org (gutenberg.org)... 152.19.134.47, 2610:28:3090:3000:0:bad:cafe:47
+Connecting to gutenberg.org (gutenberg.org)|152.19.134.47|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 40960747 (39M) [text/plain]
+Saving to: '/otus4/pg2600.converter.log'
+
+100%[===================================================>] 40,960,747  1.16MB/s   in 32s    
+
+2023-08-27 21:15:39 (1.21 MB/s) - '/otus4/pg2600.converter.log' saved [40960747/40960747]
+
+[root@zfs vagrant]# ls -l /otus*
+/otus1:
+total 22054
+-rw-r--r--. 1 root root 40960747 Aug  2 08:09 pg2600.converter.log
+
+/otus2:
+total 17988
+-rw-r--r--. 1 root root 40960747 Aug  2 08:09 pg2600.converter.log
+
+/otus3:
+total 10957
+-rw-r--r--. 1 root root 40960747 Aug  2 08:09 pg2600.converter.log
+
+/otus4:
+total 40029
+-rw-r--r--. 1 root root 40960747 Aug  2 08:09 pg2600.converter.log
+[root@zfs vagrant]# zfs list
+NAME    USED  AVAIL     REFER  MOUNTPOINT
+otus1  21.6M   330M     21.6M  /otus1
+otus2  17.7M   334M     17.6M  /otus2
+otus3  10.8M   341M     10.7M  /otus3
+otus4  39.2M   313M     39.1M  /otus4
+[root@zfs vagrant]# zfs get all | grep compressratio | grep -v ref
+otus1  compressratio         1.81x                  -
+otus2  compressratio         2.22x                  -
+otus3  compressratio         3.65x                  -
+otus4  compressratio         1.00x                  -
+[root@zfs vagrant]# echo "Следовательно gzip-9 на zpool otus3 самый эффективный по сжатию"
+Следовательно gzip-9 на zpool otus3 самый эффективный по сжатию
+...
+
+----------------------------------
+2.ИМПОРТ ПУЛА.ОПРЕДЕЛЕНИЕ НАСТРОЕК
+----------------------------------
+
+maksim@maksim-Latitude-5400:~/git/otus/homework_4$ vagrant ssh
+Last login: Sun Aug 27 17:51:40 2023 from 10.0.2.2
+[vagrant@zfs ~]$ wget -O archive.tar.gz --no-check-certificate 'https://drive.google.com/u/0/uc?id=1KRBNW33QWqbvbVHa3hLJivOAt60yukkg&export=download'
+--2023-08-28 21:32:43--  https://drive.google.com/u/0/uc?id=1KRBNW33QWqbvbVHa3hLJivOAt60yukkg&export=download
+Resolving drive.google.com (drive.google.com)... 64.233.164.194, 2a00:1450:4010:c02::c2
+Connecting to drive.google.com (drive.google.com)|64.233.164.194|:443... connected.
+HTTP request sent, awaiting response... 302 Found
+Location: https://drive.google.com/uc?id=1KRBNW33QWqbvbVHa3hLJivOAt60yukkg&export=download [following]
+--2023-08-28 21:32:43--  https://drive.google.com/uc?id=1KRBNW33QWqbvbVHa3hLJivOAt60yukkg&export=download
+Reusing existing connection to drive.google.com:443.
+HTTP request sent, awaiting response... 303 See Other
+Location: https://doc-0c-bo-docs.googleusercontent.com/docs/securesc/ha0ro937gcuc7l7deffksulhg5h7mbp1/07doln3u6r0htjr3vqtsoengqclh8bo9/1693258350000/16189157874053420687/*/1KRBNW33QWqbvbVHa3hLJivOAt60yukkg?e=download&uuid=2febf660-594e-46fd-a154-e57b2b1dd388 [following]
+Warning: wildcards not supported in HTTP.
+--2023-08-28 21:32:51--  https://doc-0c-bo-docs.googleusercontent.com/docs/securesc/ha0ro937gcuc7l7deffksulhg5h7mbp1/07doln3u6r0htjr3vqtsoengqclh8bo9/1693258350000/16189157874053420687/*/1KRBNW33QWqbvbVHa3hLJivOAt60yukkg?e=download&uuid=2febf660-594e-46fd-a154-e57b2b1dd388
+Resolving doc-0c-bo-docs.googleusercontent.com (doc-0c-bo-docs.googleusercontent.com)... 74.125.131.132, 2a00:1450:4010:c05::84
+Connecting to doc-0c-bo-docs.googleusercontent.com (doc-0c-bo-docs.googleusercontent.com)|74.125.131.132|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 7275140 (6.9M) [application/x-gzip]
+Saving to: 'archive.tar.gz'
+
+100%[===================================================>] 7,275,140   4.71MB/s   in 1.5s   
+
+2023-08-28 21:32:53 (4.71 MB/s) - 'archive.tar.gz' saved [7275140/7275140]
+
+[vagrant@zfs ~]$ ls
+archive.tar.gz
+[vagrant@zfs ~]$ sudo -s
+[root@zfs vagrant]# ls
+archive.tar.gz
+[root@zfs vagrant]# tar -xzvf archive.tar.gz 
+zpoolexport/
+zpoolexport/filea
+zpoolexport/fileb
+[root@zfs vagrant]# ls
+archive.tar.gz  zpoolexport
+[root@zfs vagrant]# zpool import -d zpoolexport/
+   pool: otus
+     id: 6554193320433390805
+  state: ONLINE
+ action: The pool can be imported using its name or numeric identifier.
+ config:
+
+	otus                                 ONLINE
+	  mirror-0                           ONLINE
+	    /home/vagrant/zpoolexport/filea  ONLINE
+	    /home/vagrant/zpoolexport/fileb  ONLINE
+[root@zfs vagrant]# zpool import -d zpoolexport/ otus
+[root@zfs vagrant]# zpool status
+  pool: otus
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME                                 STATE     READ WRITE CKSUM
+	otus                                 ONLINE       0     0     0
+	  mirror-0                           ONLINE       0     0     0
+	    /home/vagrant/zpoolexport/filea  ONLINE       0     0     0
+	    /home/vagrant/zpoolexport/fileb  ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus1
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus1       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdb     ONLINE       0     0     0
+	    sdc     ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus2
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus2       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdd     ONLINE       0     0     0
+	    sde     ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus3
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus3       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdf     ONLINE       0     0     0
+	    sdg     ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: otus4
+ state: ONLINE
+  scan: none requested
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	otus4       ONLINE       0     0     0
+	  mirror-0  ONLINE       0     0     0
+	    sdh     ONLINE       0     0     0
+	    sdi     ONLINE       0     0     0
+
+errors: No known data errors
+[root@zfs vagrant]# ls zpoolexport/file
+filea  fileb  
+[root@zfs vagrant]# ls zpoolexport/file
+filea  fileb  
+[root@zfs vagrant]# ls zpoolexport/
+filea  fileb
+[root@zfs vagrant]# head zpoolexport/filea
+z
+ے�n$ versio�  name�m�W��otus$ stat  tx�((	pool_guiZ�,m���$ errat$hostname	zfs$top_gui��vdev_childreD8	vdev_tree$ type	mirror  i  gui��~P�5,(metaslab_arraD,(metaslab_shif$ ashift $ asiz�$ is_lo((
+...
+                                  �z�hP�l}���w-��
+���ů�y
+[root@zfs vagrant]# stat zpoolexport/filea
+  File: 'zpoolexport/filea'
+  Size: 524288000 	Blocks: 1024000    IO Block: 4096   regular file
+Device: 801h/2049d	Inode: 76021103    Links: 1
+Access: (0644/-rw-r--r--)  Uid: (    0/    root)   Gid: (    0/    root)
+Context: unconfined_u:object_r:user_home_t:s0
+Access: 2023-08-28 21:41:43.257166396 +0000
+Modify: 2023-08-28 21:41:01.370999942 +0000
+Change: 2023-08-28 21:41:01.370999942 +0000
+ Birth: -
+[root@zfs vagrant]# file zpoolexport/filea
+zpoolexport/filea: data
+[root@zfs vagrant]# zfs get available otus
+NAME  PROPERTY   VALUE  SOURCE
+otus  available  350M   -
+[root@zfs vagrant]# zfs get readonly otus
+NAME  PROPERTY  VALUE   SOURCE
+otus  readonly  off     default
+[root@zfs vagrant]# zfs get recordsize otus
+NAME  PROPERTY    VALUE    SOURCE
+otus  recordsize  128K     local
+[root@zfs vagrant]# zfs get compression otus
+NAME  PROPERTY     VALUE     SOURCE
+otus  compression  zle       local
+[root@zfs vagrant]# zfs get checksum otus
+NAME  PROPERTY  VALUE      SOURCE
+otus  checksum  sha256     local
+
+-------------------------------------------------------------
+3.ВОССТАНОВЛЕНИЕ ФАЙЛА ИЗ СНАПШОТА.ПОИСК СЕКРЕТНОГО СООБЩЕНИЯ
+-------------------------------------------------------------
+
+[root@zfs vagrant]# wget -O otus_task2.file --no-check-certificate 'https://drive.google.com/u/0/uc?id=1gH8gCL9y7Nd5Ti3IRmplZPF1XjzxeRAG&export=download'
+--2023-08-28 21:45:54--  https://drive.google.com/u/0/uc?id=1gH8gCL9y7Nd5Ti3IRmplZPF1XjzxeRAG&export=download
+Resolving drive.google.com (drive.google.com)... 64.233.164.194, 2a00:1450:4010:c02::c2
+...
+HTTP request sent, awaiting response... 200 OK
+Length: 5432736 (5.2M) [application/octet-stream]
+Saving to: 'otus_task2.file'
+
+100%[===================================================>] 5,432,736   4.81MB/s   in 1.1s   
+
+2023-08-28 21:46:00 (4.81 MB/s) - 'otus_task2.file' saved [5432736/5432736]
+
+[root@zfs vagrant]# ls
+archive.tar.gz  otus_task2.file  zpoolexport
+[root@zfs vagrant]# head otus_task2.file 
+�˺�CD�^
+�t��������5Q��αp�K#torage@task25Q��αp�?�+�|�q�ǘه��勹�5Q��αp�k�^i����dI�
+
+[root@zfs vagrant]# ls
+archive.tar.gz  otus_task2.file  zpoolexport
+[root@zfs vagrant]# tree /otus/hometask2/ ^C
+[root@zfs vagrant]# zfs receive otus/test@today < otus_task2.file 
+[root@zfs vagrant]# find /otus/test/ -name "secret_message"
+/otus/test/task1/file_mess/secret_message
+[root@zfs vagrant]# cat /otus/test/task1/file_mess/secret_message
+https://github.com/sindresorhus/awesome
+
+
+
