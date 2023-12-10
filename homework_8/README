@@ -1,0 +1,130 @@
+Systemd
+1. Сервис, который раз в 30 секунд мониторит лог.
+Создаем файл с конфигурацией
+---------------------------------------------------
+[root@systemd vagrant]# cat /etc/sysconfig/watchlog 
+WORD="ALERT"
+LOG=/var/log/watchlog.log
+
+Создаем исполняемый файл
+---------------------------------------------------
+[root@systemd vagrant]# cat /opt/watchlog.sh 
+#!/bin/bash
+
+WORD=$1
+LOG=$2
+DATE='date'
+
+if grep $WORD $LOG &> /dev/null
+then
+   logger "$DATE: I found word, Maksim!"
+else
+   exit 0
+fi
+
+Создаем файл юнита в /etc/systemd/system/
+---------------------------------------------------
+[root@systemd vagrant]# systemctl cat watchlog.service 
+# /etc/systemd/system/watchlog.service
+[Unit]
+Description=My watchlog service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/sysconfig/watchlog
+ExecStart=/opt/watchlog.sh $WORD $LOG
+[root@systemd vagrant]# systemctl cat watchlogt.timer 
+# /etc/systemd/system/watchlogt.timer
+[Unit]
+Description=Run watchlog script every 30 second
+
+[Timer]
+OnUnitActiveSec=30
+Unit=watchlog.service
+
+[Install]
+WantedBy=multi-user.target
+
+Выполняем systemctl daemon-reload
+Запускаем юнит systemctl start watchlogt.timer
+Наблюдаем результат в логе:
+---------------------------------------------------
+Dec 10 20:53:56 systemd systemd: Starting My watchlog service...
+Dec 10 20:53:56 systemd root: date: I found word, Maksim!
+Dec 10 20:53:56 systemd systemd: Started My watchlog service.
+Dec 10 20:55:21 systemd systemd: Starting My watchlog service...
+Dec 10 20:55:21 systemd root: date: I found word, Maksim!
+Dec 10 20:55:21 systemd systemd: Started My watchlog service.
+Dec 10 20:56:21 systemd systemd: Starting My watchlog service...
+Dec 10 20:56:21 systemd root: date: I found word, Maksim!
+Dec 10 20:56:21 systemd systemd: Started My watchlog service.
+
+
+
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+2. Переписать init-скрипт на unit для spawn-fcgi.
+$ yum -y install epel-release
+$ yum -y install httpd.x86_64 spawn-fcgi php.x86_64
+Редактируем vi /etc/sysconfig/spawn-fcgi
+---------------------------------------------------
+[root@systemd vagrant]# cat /etc/sysconfig/spawn-fcgi 
+# You must set some working options before the "spawn-fcgi" service will work.
+# If SOCKET points to a file, then this file is cleaned up by the init script.
+#
+# See spawn-fcgi(1) for all possible options.
+#
+# Example :
+SOCKET=/var/run/php-fcgi.sock
+OPTIONS="-u apache -g apache -s $SOCKET -S -M 0600 -C 32 -F 1 -P /var/run/spawn-fcgi.pid -- /usr/bin/php-cgi"
+
+Юнит-файл будет типа forking, 4 workera. В /etc/sysconfig/spawn-fcgi опции запуска spawn-fcgi - количество процессов и тд.
+---------------------------------------------------
+[root@systemd vagrant]# systemctl cat spawn-fcgi.service 
+# /etc/systemd/system/spawn-fcgi.service
+[Unit]
+Description=Spawn-fcgi startup service by Otus
+After=network.target
+
+[Service]
+Type=simple
+PIDFile=/var/run/spawn-fcgi.pid
+EnvironmentFile=/etc/sysconfig/spawn-fcgi
+ExecStart=/usr/bin/spawn-fcgi -n $OPTIONS
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target
+
+$ systemctl enable spawn-fcgi.service
+$ systemctl start spawn-fcgi
+● spawn-fcgi.service - Start and stop FastCGI processes
+   Loaded: loaded (/etc/systemd/system/spawn-fcgi.service; enabled; vendor preset: disabled)
+   Active: active (running) since Sat 2018-11-10 19:53:20 UTC; 3s ago
+  Process: 30397 ExecStart=/bin/spawn-fcgi $OPTIONS (code=exited, status=0/SUCCESS)
+ Main PID: 30398 (php-cgi)
+   CGroup: /system.slice/spawn-fcgi.service
+           ├─30398 /usr/bin/php-cgi
+           ├─30399 /usr/bin/php-cgi
+           ├─30400 /usr/bin/php-cgi
+           └─30401 /usr/bin/php-cgi
+
+\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+3. Дополнить юнит-файл apache httpd возможностью запустить несколько инстансов сервера с разными конфигурационными файлами.
+Дополним файл httpd@.service:
+
+[Unit]
+Description=Apache httpd server %I
+...
+[Service]
+ExecStart=/usr/sbin/httpd $OPTIONS -f I% DFOREGROUND
+
+Опция -f %I позволит добавлять разные файлы конфигурации в /etc/httpd/conf, например node1, node2 перед стартом httpd:
+
+Создадим соответствующие файлы конфигурации в /etc/httpd/conf
+Создадим соответсвтующие файлы окружения в /etc/sysconfig/httpd-node1 и /etc/sysconfig/httpd-node2
+
+systemctl start httpd@node1.service
+systemctl start httpd@node2.service
+Можно так же делать это через EnvironmentFile, добавлять модификатор %I в описании [Service] к нему, для достижения того же самого эффекта.
