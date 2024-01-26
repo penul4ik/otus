@@ -1,0 +1,35 @@
+events {
+  worker_connections 1024;
+}
+
+http {
+
+
+        sendfile on;
+	tcp_nopush on;
+	types_hash_max_size 2048;
+
+
+	include /etc/nginx/mime.types;
+	default_type application/octet-stream;
+
+
+	ssl_prefer_server_ciphers on;
+
+
+	access_log /var/log/nginx/access.log;
+
+
+	gzip on;
+
+
+  server {
+    
+    listen       {{nginx_listen_port}} default_server;
+    server_name  default_server;
+    root         /usr/share/nginx/html;
+
+    location /{
+    }
+  }
+}
