@@ -1,0 +1,29 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure(2) do |config|
+    config.vm.box = "centos/7"
+    config.vm.box_version = "2004.01"
+    config.vm.provider "virtualbox" do |v|
+        v.memory = 1024
+        v.cpus = 1
+    end
+
+    config.vm.define "web-server" do |web|
+        web.vm.network "public_network", bridge: "eno2", ip: "192.168.0.100"
+        web.vm.hostname = "master"
+        web.vm.network "forwarded_port", guest: 80, host: 8080
+        web.vm.provision "file", source: "./nginx.repo", destination: "/home/vagrant/nginx.repo"
+        web.vm.provision "file", source: "./report_script.sh", destination: "/home/vagrant/report_script"
+        web.vm.provision "shell", inline: <<-SHELL
+        yum install yum-utils -y
+        sudo mv /home/vagrant/report_script /usr/bin/report_script
+        sudo mv /home/vagrant/nginx.repo /etc/yum.repos.d/nginx.repo
+        sudo chmod 700 /usr/bin/report_script
+        yum-config-manager --enable nginx-mainline
+        yum install nginx mailx -y
+        service nginx start
+        echo "0 * * * * /usr/bin/report_script >/dev/null 2>&1" > /var/spool/cron/root
+   SHELL
+    end
+end
