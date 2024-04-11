@@ -1,0 +1,253 @@
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                    Пролема и диагностика                   |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# С клиента 192.168.50.15 мы не можем обновить зону ddns.lab потому что сервер 
+# возвращает ошибку SERVFAIL. Эта ошибка говорит нам, что проблема на сервере
+[root@client vagrant]# nsupdate -k /etc/named.zonetransfer.key 
+> server 192.168.50.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.50.15
+> send
+update failed: SERVFAIL
+
+# Первым делом, нужно проверить соответствие секрета из named.zonetransfer.key 
+# на клиенте и сервере. Они одинаковые:
+[root@client vagrant]# cat /etc/named.zonetransfer.key 
+key "zonetransfer.key" {
+    algorithm hmac-md5;
+    secret "SB4Db9pJomyKxTNynlAq/g==";
+};
+[root@ns01 vagrant]# cat /etc/named.zonetransfer.key 
+key "zonetransfer.key" {
+    algorithm hmac-md5;
+    secret "SB4Db9pJomyKxTNynlAq/g==";
+};
+
+# Далее проверяем логи на сервере и видим, что не хватает прав на создание временного файла зоны named.ddns.lab.view1.jnl
+Apr 11 20:06:36 localhost named[5355]: client @0x7f754803c3e0 192.168.50.15#35522/key zonetransfer.key: view view1: signer "zonetransfer.key" approved
+Apr 11 20:06:36 localhost named[5355]: client @0x7f754803c3e0 192.168.50.15#35522/key zonetransfer.key: view view1: updating zone 'ddns.lab/IN': adding an RR at 'www.ddns.lab' A 192.168.50.15
+Apr 11 20:06:36 localhost named[5355]: /etc/named/dynamic/named.ddns.lab.view1.jnl: create: permission denied
+Apr 11 20:06:36 localhost named[5355]: client @0x7f754803c3e0 192.168.50.15#35522/key zonetransfer.key: view view1: updating zone 'ddns.lab/IN': error: journal open failed: unexpected error
+Apr 11 20:06:39 localhost dbus[337]: [system] Activating service name='org.fedoraproject.Setroubleshootd' (using servicehelper)
+Apr 11 20:06:39 localhost dbus[337]: [system] Successfully activated service 'org.fedoraproject.Setroubleshootd'
+Apr 11 20:06:39 localhost setroubleshoot: SELinux is preventing isc-worker0000 from create access on the file named.ddns.lab.view1.jnl. 
+For complete SELinux messages run: sealert -l 012458d1-08bc-4cdc-8be5-e90ef514d2f9
+Apr 11 20:06:39 localhost python: SELinux is preventing isc-worker0000 from create access on the file named.ddns.lab.view1.jnl.
+*****  Plugin catchall_labels (83.8 confidence) suggests   *******************
+If you want to allow isc-worker0000 to have create access on the named.ddns.lab.view1.jnl file
+Then you need to change the label on named.ddns.lab.view1.jnl
+Do semanage fcontext -a -t FILE_TYPE 'named.ddns.lab.view1.jnl'
+where FILE_TYPE is one of the following: dnssec_trigger_var_run_t, ipa_var_lib_t, krb5_host_rcache_t, krb5_keytab_t, named_cache_t, named_log_t, named_tmp_t, named_var_run_t, named_zone_t.
+Then execute:
+restorecon -v 'named.ddns.lab.view1.jnl'
+*****  Plugin catchall (17.1 confidence) suggests   **************************
+If you believe that isc-worker0000 should be allowed create access on the named.ddns.lab.view1.jnl file by default.
+Then you should report this as a bug.
+You can generate a local policy module to allow this access.
+allow this access for now by executing:
+ausearch -c 'isc-worker0000' --raw | audit2allow -M my-iscworker0000
+semodule -i my-iscworker0000.pp
+
+# Мы видим, что SELinux блокирует создание временного файла зоны из-за несоответствия контекстов безопасности 
+# и предлагает решения, для исправления ситуации. Удобно это сообщения можно отобразить выполнив команду 
+# sealert -l 012458d1-08bc-4cdc-8be5-e90ef514d2f9
+# Смотрим, что предлагает нам утилита audit2why. Контекст безопасности неверный:
+[root@ns01 vagrant]# tail -n 3 /var/log/audit/audit.log | audit2why
+type=AVC msg=audit(1712869502.132:2083): avc:  denied  { create } for  pid=5355 comm="isc-worker0000" name="named.ddns.lab.view1.jnl" scontext=system_u:system_r:named_t:s0 tcontext=system_u:object_r:etc_t:s0 tclass=file permissive=0
+
+	Was caused by:
+		Missing type enforcement (TE) allow rule.
+
+		You can use audit2allow to generate a loadable module to allow this access.
+
+# Смотрим контекст безопасности временных файлов зоны:
+[root@ns01 vagrant]# ls -laZ /etc/named/dynamic/
+drw-rwx---. root  named unconfined_u:object_r:etc_t:s0   .
+drw-rwx---. root  named system_u:object_r:etc_t:s0       ..
+-rw-rw----. named named system_u:object_r:etc_t:s0       named.ddns.lab
+-rw-rw----. named named system_u:object_r:etc_t:s0       named.ddns.lab.view1
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                   1. Первый способ решения                 |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Первый способ заключается в том, что мы меняем контекст безопасности для директории /etc/named/* на постоянной основе
+# Чтобы BIND мог корректно работать с файлами зоны.
+[root@ns01 vagrant]# semanage fcontext -a -t named_zone_t "/etc/named(/.*)?"
+[root@ns01 vagrant]# restorecon -R -v /etc/named
+restorecon reset /etc/named context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/named.dns.lab.view1 context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/named.dns.lab context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/dynamic context unconfined_u:object_r:etc_t:s0->unconfined_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/dynamic/named.ddns.lab context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/dynamic/named.ddns.lab.view1 context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/named.newdns.lab context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+restorecon reset /etc/named/named.50.168.192.rev context system_u:object_r:etc_t:s0->system_u:object_r:named_zone_t:s0
+[root@ns01 vagrant]# ls -laZ /etc/named/dynamic/
+drw-rwx---. root  named unconfined_u:object_r:named_zone_t:s0 .
+drw-rwx---. root  named system_u:object_r:named_zone_t:s0 ..
+-rw-rw----. named named system_u:object_r:named_zone_t:s0 named.ddns.lab
+-rw-rw----. named named system_u:object_r:named_zone_t:s0 named.ddns.lab.view1
+[root@ns01 vagrant]# ls -laZ /etc/named
+drw-rwx---. root named system_u:object_r:named_zone_t:s0 .
+drwxr-xr-x. root root  system_u:object_r:etc_t:s0       ..
+drw-rwx---. root named unconfined_u:object_r:named_zone_t:s0 dynamic
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.50.168.192.rev
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab.view1
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.newdns.lab
+
+# Проверяем результат
+[root@client vagrant]# nsupdate -k /etc/named.zonetransfer.key 
+> server 192.168.50.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.50.15
+> send
+> quit
+[root@client vagrant]# dig www.ddns.lab
+
+; <<>> DiG 9.11.4-P2-RedHat-9.11.4-26.P2.el7_9.15 <<>> www.ddns.lab
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 25016
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;www.ddns.lab.			IN	A
+
+;; ANSWER SECTION:
+www.ddns.lab.		60	IN	A	192.168.50.15
+
+;; AUTHORITY SECTION:
+ddns.lab.		3600	IN	NS	ns01.dns.lab.
+
+;; ADDITIONAL SECTION:
+ns01.dns.lab.		3600	IN	A	192.168.50.10
+
+;; Query time: 7 msec
+;; SERVER: 192.168.50.10#53(192.168.50.10)
+;; WHEN: Thu Apr 11 21:24:21 UTC 2024
+;; MSG SIZE  rcvd: 96
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                   2. Второй способ решения                 |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Возвращаем контекст и удаляем запись из ddns
+[root@client vagrant]# nsupdate -k /etc/named.zonetransfer.key 
+> server 192.168.50.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.50.15
+> send
+update failed: SERVFAIL
+
+# Теперь сделаем модуль, как было предложено утилитой audit2why
+[root@ns01 vagrant]# ausearch -c 'isc-worker0000' --raw | audit2allow -M my-iscworker0000
+******************** IMPORTANT ***********************
+To make this policy package active, execute:
+
+semodule -i my-iscworker0000.pp
+
+[root@ns01 vagrant]# semodule -i my-iscworker0000.pp
+[root@ns01 vagrant]# semodule -l | grep my
+my-iscworker0000	1.0
+
+# Проверяем результат. После перезагрузки сбросился resolv.conf на клиенте и сервере 
+[root@client vagrant]# nsupdate -k /etc/named.zonetransfer.key 
+> server 192.168.50.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.50.15
+> send
+> quit
+[root@client vagrant]# dig @192.168.50.10 www.ddns.lab A
+
+; <<>> DiG 9.11.4-P2-RedHat-9.11.4-26.P2.el7_9.15 <<>> @192.168.50.10 www.ddns.lab A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 57410
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;www.ddns.lab.			IN	A
+
+;; ANSWER SECTION:
+www.ddns.lab.		60	IN	A	192.168.50.15
+
+;; AUTHORITY SECTION:
+ddns.lab.		3600	IN	NS	ns01.dns.lab.
+
+;; ADDITIONAL SECTION:
+ns01.dns.lab.		3600	IN	A	192.168.50.10
+
+;; Query time: 3 msec
+;; SERVER: 192.168.50.10#53(192.168.50.10)
+;; WHEN: Thu Apr 11 23:17:29 UTC 2024
+;; MSG SIZE  rcvd: 96
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||            3. Третий способ решения (Из методички)         |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Убираем модуль и удаляем запись из ddns
+[root@client vagrant]# nsupdate -k /etc/named.zonetransfer.key 
+> server 192.168.50.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.50.15
+> send
+update failed: SERVFAIL
+
+# Изменяем тип контекста безопасности для каталога /etc/named утилитой chcon
+[root@ns01 vagrant]# chcon -R -t named_zone_t /etc/named
+
+# Проверяем резузльат
+[root@client vagrant]# nsupdate -k /etc/named.zonetransfer.key 
+> server 192.168.50.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.50.15
+> send
+> quit
+[root@client vagrant]# dig @192.168.50.10 www.ddns.lab A
+
+; <<>> DiG 9.11.4-P2-RedHat-9.11.4-26.P2.el7_9.15 <<>> @192.168.50.10 www.ddns.lab A
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 33742
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;www.ddns.lab.			IN	A
+
+;; ANSWER SECTION:
+www.ddns.lab.		60	IN	A	192.168.50.15
+
+;; AUTHORITY SECTION:
+ddns.lab.		3600	IN	NS	ns01.dns.lab.
+
+;; ADDITIONAL SECTION:
+ns01.dns.lab.		3600	IN	A	192.168.50.10
+
+;; Query time: 3 msec
+;; SERVER: 192.168.50.10#53(192.168.50.10)
+;; WHEN: Thu Apr 11 23:27:02 UTC 2024
+;; MSG SIZE  rcvd: 96
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                           4. Итог                          |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Выбираем первый способ. Потому что второй способ менее безопасен, 
+# а третий способ сбрасывает контекст безопасности при использовании 
+# утилиты restorecon, чего не происходит при первых двух способах

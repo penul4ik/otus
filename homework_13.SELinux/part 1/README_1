@@ -1,0 +1,126 @@
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                            Пролема                         |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+[root@selinux ~]# systemctl status firewalld
+● firewalld.service - firewalld - dynamic firewall daemon
+   Loaded: loaded (/usr/lib/systemd/system/firewalld.service; disabled; vendor preset: enabled)
+   Active: inactive (dead)
+     Docs: man:firewalld(1)
+[root@selinux ~]# nginx -t
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+[root@selinux ~]# getenforce 
+Enforcing
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                   1. Первый способ решения                 |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Находим в логах аудита информацию о блокировке порта, на котором запускается nginx
+[root@selinux ~]# grep '4881' /var/log/audit/audit.log 
+type=AVC msg=audit(1712790022.914:881): avc:  denied  { name_bind } for  pid=3042 comm="nginx" src=4881 scontext=system_u:system_r:httpd_t:s0 tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket permissive=0
+type=AVC msg=audit(1712790328.656:929): avc:  denied  { name_bind } for  pid=3113 comm="nginx" src=4881 scontext=system_u:system_r:httpd_t:s0 tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket permissive=0
+
+# Из лога получаем время события блокировки порта nginx - msg=audit(1712790328.656:929)
+# Отправляем сообщение через stdout в программу audit2why, которая сообщает нам, что нужно включить nis_enabled
+# Скриншот работающего Nginx (Nginx_work.png) в репозитории
+[root@selinux ~]# grep '1712790328.656:929' /var/log/audit/audit.log | audit2why
+type=AVC msg=audit(1712790328.656:929): avc:  denied  { name_bind } for  pid=3113 comm="nginx" src=4881 scontext=system_u:system_r:httpd_t:s0 tcontext=system_u:object_r:unreserved_port_t:s0 tclass=tcp_socket permissive=0
+
+	Was caused by:
+	The boolean nis_enabled was set incorrectly. 
+	Description:
+	Allow nis to enabled
+
+	Allow access by executing:
+	# setsebool -P nis_enabled 1
+[root@selinux ~]# setsebool -P nis_enabled 1
+[root@selinux ~]# systemctl restart nginx
+[root@selinux ~]# systemctl status nginx
+● nginx.service - The nginx HTTP and reverse proxy server
+   Loaded: loaded (/usr/lib/systemd/system/nginx.service; disabled; vendor preset: disabled)
+   Active: active (running) since Wed 2024-04-10 23:23:45 UTC; 4s ago
+  Process: 22133 ExecStart=/usr/sbin/nginx (code=exited, status=0/SUCCESS)
+  Process: 22131 ExecStartPre=/usr/sbin/nginx -t (code=exited, status=0/SUCCESS)
+  Process: 22130 ExecStartPre=/usr/bin/rm -f /run/nginx.pid (code=exited, status=0/SUCCESS)
+ Main PID: 22135 (nginx)
+   CGroup: /system.slice/nginx.service
+           ├─22135 nginx: master process /usr/sbin/nginx
+           └─22137 nginx: worker process
+
+Apr 10 23:23:45 selinux systemd[1]: Starting The nginx HTTP and reverse proxy server...
+Apr 10 23:23:45 selinux nginx[22131]: nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+Apr 10 23:23:45 selinux nginx[22131]: nginx: configuration file /etc/nginx/nginx.conf test is successful
+Apr 10 23:23:45 selinux systemd[1]: Started The nginx HTTP and reverse proxy server.
+[root@selinux ~]# getsebool -a | grep nis_en
+nis_enabled --> on
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                   2. Второй способ решения                 |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Ломаем Nginx
+[root@selinux ~]# systemctl restart nginx
+Job for nginx.service failed because the control process exited with error code. See "systemctl status nginx.service" and "journalctl -xe" for details.
+
+# Видим, что у нас в имеющимся типе портов нет нужного нам порта 4881
+# Добавим нужный нам порт в http_port-t
+[root@selinux ~]# semanage port -l | grep http
+http_cache_port_t              tcp      8080, 8118, 8123, 10001-10010
+http_cache_port_t              udp      3130
+http_port_t                    tcp      80, 81, 443, 488, 8008, 8009, 8443, 9000
+pegasus_http_port_t            tcp      5988
+pegasus_https_port_t           tcp      5989
+[root@selinux ~]# semanage port -a -t http_port_t -p tcp 4881
+[root@selinux ~]# semanage port -l | grep http
+http_cache_port_t              tcp      8080, 8118, 8123, 10001-10010
+http_cache_port_t              udp      3130
+http_port_t                    tcp      4881, 80, 81, 443, 488, 8008, 8009, 8443, 9000
+pegasus_http_port_t            tcp      5988
+pegasus_https_port_t           tcp      5989
+[root@selinux ~]# systemctl restart nginx
+[root@selinux ~]# systemctl status nginx
+● nginx.service - The nginx HTTP and reverse proxy server
+   Loaded: loaded (/usr/lib/systemd/system/nginx.service; disabled; vendor preset: disabled)
+   Active: active (running) since Wed 2024-04-10 23:55:34 UTC; 6s ago
+  Process: 22191 ExecStart=/usr/sbin/nginx (code=exited, status=0/SUCCESS)
+  Process: 22189 ExecStartPre=/usr/sbin/nginx -t (code=exited, status=0/SUCCESS)
+  Process: 22188 ExecStartPre=/usr/bin/rm -f /run/nginx.pid (code=exited, status=0/SUCCESS)
+ Main PID: 22193 (nginx)
+   CGroup: /system.slice/nginx.service
+           ├─22193 nginx: master process /usr/sbin/nginx
+           └─22194 nginx: worker process
+
+Apr 10 23:55:34 selinux systemd[1]: Starting The nginx HTTP and reverse proxy server...
+Apr 10 23:55:34 selinux nginx[22189]: nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+Apr 10 23:55:34 selinux nginx[22189]: nginx: configuration file /etc/nginx/nginx.conf test is successful
+Apr 10 23:55:34 selinux systemd[1]: Started The nginx HTTP and reverse proxy server.
+
+
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+|||                   3. Третий способ решения                 |||
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+# Ломаем nginx, снова
+[root@selinux ~]# systemctl restart nginx
+Job for nginx.service failed because the control process exited with error code. See "systemctl status nginx.service" and "journalctl -xe" for details.
+
+# Формируем модуль для selinux, с помощью перенаправления логов в audit2allow -M nginx
+[root@selinux ~]# grep 'nginx' /var/log/audit/audit.log | audit2allow -M nginx
+******************** IMPORTANT ***********************
+To make this policy package active, execute:
+
+semodule -i nginx.pp
+
+# Запускаем модуль и проверяем результат
+[root@selinux ~]# semodule -i nginx.pp
+[root@selinux ~]# systemctl restart nginx
+[root@selinux ~]# semodule -l | grep nginx
+nginx	1.0
+
+
+
+
