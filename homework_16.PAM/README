@@ -1,2 +1,2 @@
-Requred ansible module community.general.sudoers
+Requred ansible module community.general.sudoers on the localhost
 Password for otus and otusadm - Otus2022!
