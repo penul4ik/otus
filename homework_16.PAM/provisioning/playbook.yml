@@ -1,0 +1,49 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: install packages
+    yum:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - vim
+      - docker
+  - name: start docker
+    service:
+      name: docker
+      state: started
+      enabled: yes
+  - name: create groups
+    group:
+      name: admin
+      state: present
+  - name: create otusadm
+    user:
+      name: otusadm
+      shell: /bin/bash
+      groups: admin
+      password: $6$mysecretsalt$lX8f21gy/FA0yzjeqPy3ov1/HMg97OZLGlgi/tqjLis/yNutr9zG92VYb.XAArLVqBFOzHEVP5fgYWDrnOFKj1
+  - name:
+    user:
+      name: otus
+      shell: /bin/bash
+      password: $6$mysecretsalt$lX8f21gy/FA0yzjeqPy3ov1/HMg97OZLGlgi/tqjLis/yNutr9zG92VYb.XAArLVqBFOzHEVP5fgYWDrnOFKj1
+  - name: copy login.sh
+    copy:
+      src: login.sh
+      dest: /usr/local/bin/login.sh
+      mode: 0760
+  - name: edit PAM
+    lineinfile:
+      path: /etc/pam.d/sshd
+      insertafter: '^auth\ *include\ *postlogin$'
+      line: 'auth       required     pam_exec.so debug /usr/local/bin/login.sh'
+  - name: edit sudoers
+    community.general.sudoers:
+      name: allow docker for otus
+      state: present
+      user: otus
+      commands: /bin/docker
+    
