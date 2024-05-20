@@ -1,0 +1,14 @@
+1. web:
+- nginx
+- JSON-logger
+- rsyslog
+- filebeat
+2. log:
+- rsyslog
+3. elk:
+- rsyslog
+- logstash
+- elasticsearch
+- kibana
+
+Required filebeat, logstash, elasticsearch and kibana DEB packages on localhost

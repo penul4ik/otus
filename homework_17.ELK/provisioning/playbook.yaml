@@ -1,0 +1,19 @@
+elk:
+setup timezone, ntp and locales
+copy elastic, kibana
+install elk, rsyslog
+copy configs: kibana.yml, elastic.yml, elk.conf, all.conf
+start and enable elk
+start shell script which create elastic token and elastic user
+
+web:
+setup timezone, ntp and locales
+copy filebeat, JSON_logger.py
+install filebeat, rsyslog, nginx, pythin, python3 libraries
+setup cron for JSON_logger
+copy configs: filebeat.yml, rsyslog - all.conf, logger.conf, nginx
+
+log:
+setup timezone, ntp and locales
+install rsyslog
+copy rsyslog configs

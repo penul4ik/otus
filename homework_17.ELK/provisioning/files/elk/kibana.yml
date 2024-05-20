@@ -1,0 +1,12 @@
+server.port: 5601
+server.host: 192.168.56.12
+server.name: otus-kibana
+elasticsearch.hosts: ['https://192.168.56.12:9200']
+logging.appenders.file.type: file
+logging.appenders.file.fileName: /var/log/kibana/kibana.log
+logging.appenders.file.layout.type: json
+logging.root.appenders: [default, file]
+pid.file: /run/kibana/kibana.pid
+elasticsearch.serviceAccountToken: AAEAAWVsYXN0aWMva2liYW5hL2Vucm9sbC1wcm9jZXNzLXRva2VuLTE3MTYwOTQyNjM1Nzg6dmRfNTFtVlNSaTJ4NTNpY0VYcUI2Zw
+elasticsearch.ssl.certificateAuthorities: [/var/lib/kibana/ca_1716094267183.crt]
+xpack.fleet.outputs: [{id: fleet-default-output, name: default, is_default: true, is_default_monitoring: true, type: elasticsearch, hosts: ['https://10.0.2.15:9200'], ca_trusted_fingerprint: 92668c3d62a3e9a14eeb89cda015bc6d01a421e43fe439ddcf7b737ff204fcd1}]

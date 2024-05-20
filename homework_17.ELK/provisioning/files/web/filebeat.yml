@@ -1,0 +1,29 @@
+filebeat.inputs:
+- type: filestream
+  id: my-filestream-id
+  enabled: false
+  paths:
+    - /var/log/*.log
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+setup.template.settings:
+  index.number_of_shards: 1
+setup.kibana:
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_cloud_metadata: ~
+  - add_docker_metadata: ~
+  - add_kubernetes_metadata: ~
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/nginx/*.log
+    - /var/log/logger.log
+output.elasticsearch:
+  hosts: ["https://192.168.56.12:9200"]
+  username: admin
+  password: 123123
+  ssl.verification_mode: "none"
