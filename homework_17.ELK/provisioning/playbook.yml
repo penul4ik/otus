@@ -1,0 +1,171 @@
+---
+- hosts: all
+  become: true
+  tasks:
+  - name: install packages
+    apt:
+      name: "{{ packages }}"
+      state: present
+    vars:
+      packages:
+      - ntp
+      - ntpdate
+      - rsyslog
+  - name: set ntp
+    shell: ntpdate 1.ru.pool.ntp.org
+  - name: set timezone
+    shell: timedatectl set-timezone Europe/Moscow
+
+- hosts: log
+  become: true
+  tasks:
+  - name: copy rsyslog.conf
+    copy:
+      src: files/log/rsyslog.conf
+      dest: /etc/rsyslog.conf
+      owner: root
+      mode: 0644
+  - name: rsyslog service
+    service:
+      name: rsyslog
+      state: restarted
+      enabled: yes
+
+- hosts: web
+  become: true
+  tasks:
+    - name: install packages
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+        - nginx
+        - python3
+        - python3-pip
+        - python3-full
+    - name: install python libraries
+      pip:
+        name: "{{ py_libraries }}"
+        extra_args: --break-system-packages
+        # Я знаю что это за аргумент, мне лень делать нормально
+      vars:
+        py_libraries:
+        - python-json-logger
+        - pytz
+        - netifaces
+    - name: copy nginx.conf
+      copy:
+        src: files/web/default
+        dest: /etc/nginx/sites-available/default
+        owner: root
+        mode: 0644
+    - name: copy logger.py
+      copy:
+        src: files/web/JSON_logger.py
+        dest: /usr/local/bin/JSON_logger.py
+        owner: root
+        group: root
+        mode: 0770
+    - name: copy rsyslog all.conf
+      copy:
+        src: files/web/all.conf
+        dest: /etc/rsyslog.d/all.conf
+        owner: root
+        mode: 0644
+    - name: copy rsyslog logger.conf
+      copy: 
+        src: files/web/logger.conf
+        dest: /etc/rsyslog.d/logger.conf
+        owner: root
+        mode: 0644
+    - name: copy filebeat deb package
+      copy:
+        src: /home/mkonovalenko/Downloads/filebeat-8.13.4-amd64.deb
+        dest: /root/filebeat-8.13.4-amd64.deb
+    - name: install filebeat
+      shell: dpkg -i /root/filebeat-8.13.4-amd64.deb
+    - name: copy filebeat config
+      copy:
+        src: files/web/filebeat.yml
+        dest: /etc/filebeat/filebeat.yml
+        owner: root
+        mode: 0600
+    - name: nginx service
+      service:
+        name: nginx
+        state: reloaded
+        enabled: yes
+    - name: rsyslog service
+      service:
+        name: rsyslog
+        state: restarted
+        enabled: yes
+    - name: filebeat service
+      service:
+        name: filebeat
+        state: restarted
+        enabled: yes
+    - name: setup cron for logger.py
+      cron:
+        name: "logger"
+        job: "/usr/bin/python3 /usr/local/bin/JSON_logger.py"
+    - name: set PATH env for cron
+      cron:
+        name: PATH
+        env: yes
+        job: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    - name: set SHELL env for cron
+      cron:
+        name: SHELL
+        env: yes
+        job: /bin/bash
+    - name:
+      cron:
+        name: USER
+        env: yes
+        job: root
+
+- hosts: elk
+  become: true
+  tasks:
+    - name: copy elastic
+      copy:
+        src: /home/mkonovalenko/Downloads/elasticsearch-8.13.4-amd64.deb
+        dest: /root/elasticsearch-8.13.4-amd64.deb
+    - name: copy kibana
+      copy:
+        src: /home/mkonovalenko/Downloads/kibana-8.13.4-amd64.deb
+        dest: /root/kibana-8.13.4-amd64.deb
+    - name: install elastic
+      shell: dpkg -i /root/elasticsearch-8.13.4-amd64.deb
+    - name: install kibana
+      shell: dpkg -i /root/kibana-8.13.4-amd64.deb
+    - name: copy rsyslog config
+      copy:
+        src: files/elk/all.conf
+        dest: /etc/rsyslog.d/all.conf
+#    - name: copy elastic config
+#      copy:
+#        src: files/elk/elasticsearch.yml
+#        dest: /etc/elasticsearch/elasticsearch.yml
+#    - name: copy kibana config
+#      copy:
+#        src: files/elk/kibana.yml
+#        dest: /etc/kibana/kibana.yml
+    - name: rsyslog service
+      service:
+        name: rsyslog
+        state: restarted
+        enabled: yes
+    - name: elastic service
+      service:
+        name: elasticsearch
+        state: restarted
+        enabled: yes
+    - name: kibana service
+      service:
+        name: kibana
+        state: restarted
+        enabled: yes
+    
